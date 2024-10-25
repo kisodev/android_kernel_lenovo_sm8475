@@ -16,13 +16,13 @@
 #include <linux/blk-mq-virtio.h>
 #include <linux/numa.h>
 #include <uapi/linux/virtio_ring.h>
+#ifdef CONFIG_GH_VIRTIO_DEBUG
+#include <trace/events/gh_virtio_frontend.h>
+#endif
 
 #define PART_BITS 4
 #define VQ_NAME_LEN 16
 #define MAX_DISCARD_SEGMENTS 256u
-
-/* The maximum number of sg elements that fit into a virtqueue */
-#define VIRTIO_BLK_MAX_SG_ELEMS 32768
 
 static int major;
 static DEFINE_IDA(vd_index_ida);
@@ -191,6 +191,9 @@ static void virtblk_done(struct virtqueue *vq)
 
 			if (likely(!blk_should_fake_timeout(req->q)))
 				blk_mq_complete_request(req);
+#ifdef CONFIG_GH_VIRTIO_DEBUG
+			trace_virtio_block_done(vq->vdev->index, req_op(req), blk_rq_pos(req));
+#endif
 			req_done = true;
 		}
 		if (unlikely(virtqueue_is_broken(vq)))
@@ -281,6 +284,10 @@ static blk_status_t virtio_queue_rq(struct blk_mq_hw_ctx *hctx,
 
 	spin_lock_irqsave(&vblk->vqs[qid].lock, flags);
 	err = virtblk_add_req(vblk->vqs[qid].vq, vbr, vbr->sg, num);
+#ifdef CONFIG_GH_VIRTIO_DEBUG
+	trace_virtio_block_submit(vblk->vqs[qid].vq->vdev->index,
+		vbr->out_hdr.type, vbr->out_hdr.sector, vbr->out_hdr.ioprio, err, num);
+#endif
 	if (err) {
 		virtqueue_kick(vblk->vqs[qid].vq);
 		/* Don't stop the queue if -ENOMEM: we may have failed to
@@ -509,10 +516,6 @@ static int init_vq(struct virtio_blk *vblk)
 				   &num_vqs);
 	if (err)
 		num_vqs = 1;
-	if (!err && !num_vqs) {
-		dev_err(&vdev->dev, "MQ advertisted but zero queues reported\n");
-		return -EINVAL;
-	}
 
 	num_vqs = min_t(unsigned int, nr_cpu_ids, num_vqs);
 
@@ -737,10 +740,7 @@ static int virtblk_probe(struct virtio_device *vdev)
 	if (err || !sg_elems)
 		sg_elems = 1;
 
-	/* Prevent integer overflows and honor max vq size */
-	sg_elems = min_t(u32, sg_elems, VIRTIO_BLK_MAX_SG_ELEMS - 2);
-
-	/* We need extra sg elements at head and tail. */
+	/* We need an extra sg elements at head and tail. */
 	sg_elems += 2;
 	vdev->priv = vblk = kmalloc(sizeof(*vblk), GFP_KERNEL);
 	if (!vblk) {

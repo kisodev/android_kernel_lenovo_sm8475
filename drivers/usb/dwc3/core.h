@@ -729,6 +729,7 @@ struct dwc3_ep {
 #define DWC3_EP_FIRST_STREAM_PRIMED	BIT(10)
 #define DWC3_EP_PENDING_CLEAR_STALL	BIT(11)
 #define DWC3_EP_TXFIFO_RESIZED		BIT(12)
+#define DWC3_EP_DELAY_STOP             BIT(13)
 
 	/* This last one is specific to EP0 */
 #define DWC3_EP0_DIR_IN		BIT(31)
@@ -1320,6 +1321,16 @@ struct dwc3 {
 	ANDROID_KABI_RESERVE(4);
 };
 
+/**
+ * struct dwc3_vendor - contains parameters without modifying the format of DWC3 core
+ * @dwc: contains dwc3 core reference
+ * @softconnect: true when gadget connect is called, false when disconnect runs
+ */
+struct dwc3_vendor {
+	struct dwc3	dwc;
+	unsigned	softconnect:1;
+};
+
 #define INCRX_BURST_MODE 0
 #define INCRX_UNDEF_LENGTH_BURST_MODE 1
 
@@ -1528,6 +1539,8 @@ bool dwc3_has_imod(struct dwc3 *dwc);
 
 int dwc3_event_buffers_setup(struct dwc3 *dwc);
 void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
+
+int dwc3_core_soft_reset(struct dwc3 *dwc);
 
 #if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 int dwc3_host_init(struct dwc3 *dwc);
