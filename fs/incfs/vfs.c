@@ -1592,6 +1592,10 @@ static int incfs_setattr(struct dentry *dentry, struct iattr *ia)
 	if (ia->ia_valid & ATTR_SIZE)
 		return -EINVAL;
 
+	if ((ia->ia_valid & (ATTR_KILL_SUID|ATTR_KILL_SGID)) &&
+	    (ia->ia_valid & ATTR_MODE))
+		return -EINVAL;
+
 	if (!di)
 		return -EINVAL;
 	backing_dentry = di->backing_path.dentry;
@@ -1853,11 +1857,10 @@ struct dentry *incfs_mount_fs(struct file_system_type *type, int flags,
 	if (error)
 		goto err_put_path;
 
-	mi->mi_backing_dir_path = backing_dir_path;
+	path_put(&backing_dir_path);
 	sb->s_flags |= SB_ACTIVE;
 
 	pr_debug("incfs: mount\n");
-	free_options(&options);
 	return dget(sb->s_root);
 
 err_put_path:

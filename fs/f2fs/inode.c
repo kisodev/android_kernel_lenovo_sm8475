@@ -515,11 +515,6 @@ make_now:
 	} else if (ino == F2FS_COMPRESS_INO(sbi)) {
 #ifdef CONFIG_F2FS_FS_COMPRESSION
 		inode->i_mapping->a_ops = &f2fs_compress_aops;
-		/*
-		 * generic_error_remove_page only truncates pages of regular
-		 * inode
-		 */
-		inode->i_mode |= S_IFREG;
 #endif
 		mapping_set_gfp_mask(inode->i_mapping,
 			GFP_NOFS | __GFP_HIGHMEM | __GFP_MOVABLE);
@@ -548,15 +543,6 @@ make_now:
 		goto bad_inode;
 	}
 	f2fs_set_inode_flags(inode);
-
-	if (file_should_truncate(inode) &&
-			!is_sbi_flag_set(sbi, SBI_POR_DOING)) {
-		ret = f2fs_truncate(inode);
-		if (ret)
-			goto bad_inode;
-		file_dont_truncate(inode);
-	}
-
 	unlock_new_inode(inode);
 	trace_f2fs_iget(inode);
 	return inode;
@@ -699,7 +685,8 @@ retry:
 			cond_resched();
 			goto retry;
 		} else if (err != -ENOENT) {
-			f2fs_stop_checkpoint(sbi, false);
+			f2fs_stop_checkpoint(sbi, false,
+					STOP_CP_REASON_UPDATE_INODE);
 		}
 		return;
 	}
@@ -751,8 +738,7 @@ void f2fs_evict_inode(struct inode *inode)
 	trace_f2fs_evict_inode(inode);
 	truncate_inode_pages_final(&inode->i_data);
 
-	if ((inode->i_nlink || is_bad_inode(inode)) &&
-		test_opt(sbi, COMPRESS_CACHE) && f2fs_compressed_file(inode))
+	if (test_opt(sbi, COMPRESS_CACHE) && f2fs_compressed_file(inode))
 		f2fs_invalidate_compress_pages(sbi, inode->i_ino);
 
 	if (inode->i_ino == F2FS_NODE_INO(sbi) ||
@@ -768,7 +754,7 @@ void f2fs_evict_inode(struct inode *inode)
 	if (inode->i_nlink || is_bad_inode(inode))
 		goto no_delete;
 
-	err = f2fs_dquot_initialize(inode);
+	err = dquot_initialize(inode);
 	if (err) {
 		err = 0;
 		set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);

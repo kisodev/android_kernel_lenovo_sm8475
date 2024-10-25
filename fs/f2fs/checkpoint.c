@@ -18,7 +18,6 @@
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
-#include "iostat.h"
 #include <trace/events/f2fs.h>
 
 #define DEFAULT_CHECKPOINT_IOPRIO (IOPRIO_PRIO_VALUE(IOPRIO_CLASS_BE, 3))
@@ -26,12 +25,16 @@
 static struct kmem_cache *ino_entry_slab;
 struct kmem_cache *f2fs_inode_entry_slab;
 
-void f2fs_stop_checkpoint(struct f2fs_sb_info *sbi, bool end_io)
+void f2fs_stop_checkpoint(struct f2fs_sb_info *sbi, bool end_io,
+						unsigned char reason)
 {
 	f2fs_build_fault_attr(sbi, 0, 0);
 	set_ckpt_flags(sbi, CP_ERROR_FLAG);
-	if (!end_io)
+	if (!end_io) {
 		f2fs_flush_merged_writes(sbi);
+
+		f2fs_handle_stop(sbi, reason);
+	}
 }
 
 /*
@@ -98,13 +101,6 @@ repeat:
 	}
 
 	if (unlikely(!PageUptodate(page))) {
-		if (page->index == sbi->metapage_eio_ofs &&
-			sbi->metapage_eio_cnt++ == MAX_RETRY_META_PAGE_EIO) {
-			set_ckpt_flags(sbi, CP_ERROR_FLAG);
-		} else {
-			sbi->metapage_eio_ofs = page->index;
-			sbi->metapage_eio_cnt = 0;
-		}
 		f2fs_put_page(page, 1);
 		return ERR_PTR(-EIO);
 	}
@@ -128,7 +124,7 @@ retry:
 		if (PTR_ERR(page) == -EIO &&
 				++count <= DEFAULT_RETRY_IO_COUNT)
 			goto retry;
-		f2fs_stop_checkpoint(sbi, false);
+		f2fs_stop_checkpoint(sbi, false, STOP_CP_REASON_META_PAGE);
 	}
 	return page;
 }
@@ -289,14 +285,10 @@ out:
 	return blkno - start;
 }
 
-void f2fs_ra_meta_pages_cond(struct f2fs_sb_info *sbi, pgoff_t index,
-							unsigned int ra_blocks)
+void f2fs_ra_meta_pages_cond(struct f2fs_sb_info *sbi, pgoff_t index)
 {
 	struct page *page;
 	bool readahead = false;
-
-	if (ra_blocks == RECOVERY_MIN_RA_BLOCKS)
-		return;
 
 	page = find_get_page(META_MAPPING(sbi), index);
 	if (!page || !PageUptodate(page))
@@ -304,7 +296,7 @@ void f2fs_ra_meta_pages_cond(struct f2fs_sb_info *sbi, pgoff_t index,
 	f2fs_put_page(page, 0);
 
 	if (readahead)
-		f2fs_ra_meta_pages(sbi, index, ra_blocks, META_POR, true);
+		f2fs_ra_meta_pages(sbi, index, BIO_MAX_PAGES, META_POR, true);
 }
 
 static int __f2fs_write_meta_page(struct page *page,
@@ -477,29 +469,16 @@ static void __add_ino_entry(struct f2fs_sb_info *sbi, nid_t ino,
 						unsigned int devidx, int type)
 {
 	struct inode_management *im = &sbi->im[type];
-	struct ino_entry *e = NULL, *new = NULL;
+	struct ino_entry *e, *tmp;
 
-	if (type == FLUSH_INO) {
-		rcu_read_lock();
-		e = radix_tree_lookup(&im->ino_root, ino);
-		rcu_read_unlock();
-	}
-
-retry:
-	if (!e)
-		new = f2fs_kmem_cache_alloc(ino_entry_slab,
-						GFP_NOFS, true, NULL);
+	tmp = f2fs_kmem_cache_alloc(ino_entry_slab, GFP_NOFS);
 
 	radix_tree_preload(GFP_NOFS | __GFP_NOFAIL);
 
 	spin_lock(&im->ino_lock);
 	e = radix_tree_lookup(&im->ino_root, ino);
 	if (!e) {
-		if (!new) {
-			spin_unlock(&im->ino_lock);
-			goto retry;
-		}
-		e = new;
+		e = tmp;
 		if (unlikely(radix_tree_insert(&im->ino_root, ino, e)))
 			f2fs_bug_on(sbi, 1);
 
@@ -517,8 +496,8 @@ retry:
 	spin_unlock(&im->ino_lock);
 	radix_tree_preload_end();
 
-	if (new && e != new)
-		kmem_cache_free(ino_entry_slab, new);
+	if (e != tmp)
+		kmem_cache_free(ino_entry_slab, tmp);
 }
 
 static void __remove_ino_entry(struct f2fs_sb_info *sbi, nid_t ino, int type)
@@ -664,7 +643,7 @@ static int recover_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
 		return PTR_ERR(inode);
 	}
 
-	err = f2fs_dquot_initialize(inode);
+	err = dquot_initialize(inode);
 	if (err) {
 		iput(inode);
 		goto err_out;
@@ -716,6 +695,9 @@ int f2fs_recover_orphan_inodes(struct f2fs_sb_info *sbi)
 	}
 
 #ifdef CONFIG_QUOTA
+	/* Needed for iput() to work correctly and not trash data */
+	sbi->sb->s_flags |= SB_ACTIVE;
+
 	/*
 	 * Turn on quotas which were not enabled for read-only mounts if
 	 * filesystem has quota feature, so that they are updated correctly.
@@ -1314,20 +1296,12 @@ static void update_ckpt_flags(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	struct f2fs_checkpoint *ckpt = F2FS_CKPT(sbi);
 	unsigned long flags;
 
-	if (cpc->reason & CP_UMOUNT) {
-		if (le32_to_cpu(ckpt->cp_pack_total_block_count) +
-			NM_I(sbi)->nat_bits_blocks > sbi->blocks_per_seg) {
-			clear_ckpt_flags(sbi, CP_NAT_BITS_FLAG);
-			f2fs_notice(sbi, "Disable nat_bits due to no space");
-		} else if (!is_set_ckpt_flags(sbi, CP_NAT_BITS_FLAG) &&
-						f2fs_nat_bitmap_enabled(sbi)) {
-			f2fs_enable_nat_bits(sbi);
-			set_ckpt_flags(sbi, CP_NAT_BITS_FLAG);
-			f2fs_notice(sbi, "Rebuild and enable nat_bits");
-		}
-	}
-
 	spin_lock_irqsave(&sbi->cp_lock, flags);
+
+	if ((cpc->reason & CP_UMOUNT) &&
+			le32_to_cpu(ckpt->cp_pack_total_block_count) >
+			sbi->blocks_per_seg - NM_I(sbi)->nat_bits_blocks)
+		disable_nat_bits(sbi, false);
 
 	if (cpc->reason & CP_TRIMMED)
 		__set_ckpt_flags(ckpt, CP_TRIMMED_FLAG);
@@ -1513,8 +1487,7 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	start_blk = __start_cp_next_addr(sbi);
 
 	/* write nat bits */
-	if ((cpc->reason & CP_UMOUNT) &&
-			is_set_ckpt_flags(sbi, CP_NAT_BITS_FLAG)) {
+	if (enabled_nat_bits(sbi, cpc)) {
 		__u64 cp_ver = cur_cp_version(ckpt);
 		block_t blk;
 
@@ -1556,7 +1529,6 @@ static int do_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	/* update user_block_counts */
 	sbi->last_valid_block_count = sbi->total_valid_block_count;
 	percpu_counter_set(&sbi->alloc_valid_block_count, 0);
-	percpu_counter_set(&sbi->rf_node_block_count, 0);
 
 	/* Here, we have one bio having CP pack except cp pack 2 page */
 	f2fs_sync_meta_pages(sbi, META, LONG_MAX, FS_CP_META_IO);
@@ -1674,11 +1646,8 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 
 	/* write cached NAT/SIT entries to NAT/SIT area */
 	err = f2fs_flush_nat_entries(sbi, cpc);
-	if (err) {
-		f2fs_err(sbi, "f2fs_flush_nat_entries failed err:%d, stop checkpoint", err);
-		f2fs_bug_on(sbi, !f2fs_cp_error(sbi));
+	if (err)
 		goto stop;
-	}
 
 	f2fs_flush_sit_entries(sbi, cpc);
 
@@ -1686,13 +1655,10 @@ int f2fs_write_checkpoint(struct f2fs_sb_info *sbi, struct cp_control *cpc)
 	f2fs_save_inmem_curseg(sbi);
 
 	err = do_checkpoint(sbi, cpc);
-	if (err) {
-		f2fs_err(sbi, "do_checkpoint failed err:%d, stop checkpoint", err);
-		f2fs_bug_on(sbi, !f2fs_cp_error(sbi));
+	if (err)
 		f2fs_release_discard_addrs(sbi);
-	} else {
+	else
 		f2fs_clear_prefree_segments(sbi, cpc);
-	}
 
 	f2fs_restore_inmem_curseg(sbi);
 stop:
@@ -1901,15 +1867,27 @@ int f2fs_start_ckpt_thread(struct f2fs_sb_info *sbi)
 void f2fs_stop_ckpt_thread(struct f2fs_sb_info *sbi)
 {
 	struct ckpt_req_control *cprc = &sbi->cprc_info;
+	struct task_struct *ckpt_task;
 
-	if (cprc->f2fs_issue_ckpt) {
-		struct task_struct *ckpt_task = cprc->f2fs_issue_ckpt;
+	if (!cprc->f2fs_issue_ckpt)
+		return;
 
-		cprc->f2fs_issue_ckpt = NULL;
-		kthread_stop(ckpt_task);
+	ckpt_task = cprc->f2fs_issue_ckpt;
+	cprc->f2fs_issue_ckpt = NULL;
+	kthread_stop(ckpt_task);
 
-		flush_remained_ckpt_reqs(sbi, NULL);
-	}
+	f2fs_flush_ckpt_thread(sbi);
+}
+
+void f2fs_flush_ckpt_thread(struct f2fs_sb_info *sbi)
+{
+	struct ckpt_req_control *cprc = &sbi->cprc_info;
+
+	flush_remained_ckpt_reqs(sbi, NULL);
+
+	/* Let's wait for the previous dispatched checkpoint. */
+	while (atomic_read(&cprc->queued_ckpt))
+		io_schedule_timeout(DEFAULT_IO_TIMEOUT);
 }
 
 void f2fs_init_ckpt_req_control(struct f2fs_sb_info *sbi)
