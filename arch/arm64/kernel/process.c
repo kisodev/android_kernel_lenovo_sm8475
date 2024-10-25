@@ -45,7 +45,6 @@
 #include <linux/thread_info.h>
 #include <linux/prctl.h>
 #include <trace/hooks/fpsimd.h>
-#include <trace/hooks/mpam.h>
 
 #include <asm/alternative.h>
 #include <asm/arch_gicv3.h>
@@ -564,11 +563,6 @@ __notrace_funcgraph struct task_struct *__switch_to(struct task_struct *prev,
 	ssbs_thread_switch(next);
 	erratum_1418040_thread_switch(next);
 	ptrauth_thread_switch_user(next);
-	/*
-	 *  vendor hook is needed before the dsb(),
-	 *  because MPAM is related to cache maintenance.
-	 */
-	trace_android_vh_mpam_set(prev, next);
 
 	/*
 	 * Complete any pending TLB or cache maintenance on this CPU in case
@@ -623,6 +617,7 @@ out:
 	put_task_stack(p);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(get_wchan);
 
 unsigned long arch_align_stack(unsigned long sp)
 {
@@ -656,8 +651,8 @@ void arch_setup_new_exec(void)
 
 	current->mm->context.flags = mmflags;
 	ptrauth_thread_init_user();
-	erratum_1418040_new_exec();
 	mte_thread_init_user();
+	erratum_1418040_new_exec();
 
 	if (task_spec_ssb_noexec(current)) {
 		arch_prctl_spec_ctrl_set(current, PR_SPEC_STORE_BYPASS,
@@ -680,8 +675,7 @@ long set_tagged_addr_ctrl(struct task_struct *task, unsigned long arg)
 		return -EINVAL;
 
 	if (system_supports_mte())
-		valid_mask |= PR_MTE_TCF_SYNC | PR_MTE_TCF_ASYNC \
-			| PR_MTE_TAG_MASK;
+		valid_mask |= PR_MTE_TCF_MASK | PR_MTE_TAG_MASK;
 
 	if (arg & ~valid_mask)
 		return -EINVAL;
