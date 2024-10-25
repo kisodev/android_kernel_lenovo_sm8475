@@ -5,6 +5,7 @@
 
 #if !defined(_TRACE_HOOK_DTASK_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_DTASK_H
+#include <linux/tracepoint.h>
 #include <trace/hooks/vendor_hooks.h>
 /*
  * Following tracepoints are not exported in tracefs and provide a
@@ -64,6 +65,21 @@ DECLARE_HOOK(android_vh_alter_mutex_list_add,
 DECLARE_HOOK(android_vh_mutex_unlock_slowpath,
 	TP_PROTO(struct mutex *lock),
 	TP_ARGS(lock));
+DECLARE_HOOK(android_vh_mutex_unlock_slowpath_end,
+	TP_PROTO(struct mutex *lock, struct task_struct *next),
+	TP_ARGS(lock, next));
+DECLARE_HOOK(android_vh_record_mutex_lock_starttime,
+	TP_PROTO(struct task_struct *tsk, unsigned long settime_jiffies),
+	TP_ARGS(tsk, settime_jiffies));
+DECLARE_HOOK(android_vh_record_rtmutex_lock_starttime,
+	TP_PROTO(struct task_struct *tsk, unsigned long settime_jiffies),
+	TP_ARGS(tsk, settime_jiffies));
+DECLARE_HOOK(android_vh_record_rwsem_lock_starttime,
+	TP_PROTO(struct task_struct *tsk, unsigned long settime_jiffies),
+	TP_ARGS(tsk, settime_jiffies));
+DECLARE_HOOK(android_vh_record_pcpu_rwsem_starttime,
+	TP_PROTO(struct task_struct *tsk, unsigned long settime_jiffies),
+	TP_ARGS(tsk, settime_jiffies));
 
 /* macro versions of hooks are no longer required */
 

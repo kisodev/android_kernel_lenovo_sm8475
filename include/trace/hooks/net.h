@@ -6,14 +6,13 @@
 
 #if !defined(_TRACE_HOOK_NET_VH_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_NET_VH_H
+#include <linux/tracepoint.h>
 #include <trace/hooks/vendor_hooks.h>
 
 #ifdef __GENKSYMS__
 struct packet_type;
 struct sk_buff;
 struct list_head;
-struct nf_conn;
-struct sock;
 #else
 /* struct packet_type */
 #include <linux/netdevice.h>
@@ -21,10 +20,6 @@ struct sock;
 #include <linux/skbuff.h>
 /* struct list_head */
 #include <linux/types.h>
-/* struct nf_conn */
-#include <net/netfilter/nf_conntrack.h>
-/* struct sock */
-#include <net/sock.h>
 #endif /* __GENKSYMS__ */
 DECLARE_HOOK(android_vh_ptype_head,
 	TP_PROTO(const struct packet_type *pt, struct list_head *vendor_pt),
@@ -32,14 +27,8 @@ DECLARE_HOOK(android_vh_ptype_head,
 DECLARE_HOOK(android_vh_kfree_skb,
 	TP_PROTO(struct sk_buff *skb), TP_ARGS(skb));
 
-DECLARE_RESTRICTED_HOOK(android_rvh_nf_conn_alloc,
-	TP_PROTO(struct nf_conn *nf_conn), TP_ARGS(nf_conn), 1);
-DECLARE_RESTRICTED_HOOK(android_rvh_nf_conn_free,
-	TP_PROTO(struct nf_conn *nf_conn), TP_ARGS(nf_conn), 1);
-DECLARE_RESTRICTED_HOOK(android_rvh_sk_alloc,
-	TP_PROTO(struct sock *sock), TP_ARGS(sock), 1);
-DECLARE_RESTRICTED_HOOK(android_rvh_sk_free,
-	TP_PROTO(struct sock *sock), TP_ARGS(sock), 1);
+struct nf_conn;	/* needed for CRC preservation */
+struct sock;	/* needed for CRC preservation */
 
 /* macro versions of hooks are no longer required */
 

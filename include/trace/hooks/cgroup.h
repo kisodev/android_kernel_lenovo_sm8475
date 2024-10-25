@@ -5,17 +5,20 @@
 #define TRACE_INCLUDE_PATH trace/hooks
 #if !defined(_TRACE_HOOK_CGROUP_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_CGROUP_H
+#include <linux/tracepoint.h>
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
 struct cgroup_taskset;
+#if defined(__GENKSYMS__) || !IS_ENABLED(CONFIG_CGROUPS)
 struct cgroup_subsys;
-struct task_struct;
 #else
-/* Including ../kernel/cgroup/cgroup-internal.h breaks builds. */
-struct cgroup_taskset;
 /* struct cgroup_subsys */
 #include <linux/cgroup-defs.h>
+#endif
+
+#ifdef __GENKSYMS__
+struct task_struct;
+#else
 /* struct task_struct */
 #include <linux/sched.h>
 #endif /* __GENKSYMS__ */

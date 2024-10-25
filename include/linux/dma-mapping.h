@@ -10,6 +10,7 @@
 #include <linux/scatterlist.h>
 #include <linux/bug.h>
 #include <linux/mem_encrypt.h>
+#include <linux/qcom-dma-mapping.h>
 
 /**
  * List of possible attributes associated with a DMA mapping. The semantics
@@ -67,7 +68,7 @@
  * or last level cache. This is useful for buffers that are being mapped for
  * devices that are non-coherent, but can use the system cache.
  */
-#define DMA_ATTR_SYS_CACHE_ONLY		(1UL << 10)
+#define DMA_ATTR_SYS_CACHE_ONLY		(1UL << 14)
 
 /*
  * DMA_ATTR_SYS_CACHE_ONLY_NWA: used to indicate that the buffer should be
@@ -76,7 +77,7 @@
  * useful for buffers that are being mapped for devices that are non-coherent,
  * but can use the system cache.
  */
-#define DMA_ATTR_SYS_CACHE_ONLY_NWA	(1UL << 11)
+#define DMA_ATTR_SYS_CACHE_ONLY_NWA	(1UL << 15)
 
 /*
  * A dma_addr_t can hold any valid DMA or bus address for the platform.  It can

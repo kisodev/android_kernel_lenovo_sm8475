@@ -4,13 +4,15 @@
 #define TRACE_INCLUDE_PATH trace/hooks
 #if !defined(_TRACE_HOOK_TYPEC_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_TYPEC_H
+#include <linux/tracepoint.h>
 #include <linux/usb/pd.h>
+#include <linux/usb/tcpm.h>
 #include <trace/hooks/vendor_hooks.h>
 /*
  * Following tracepoints are not exported in tracefs and provide a
  * mechanism for vendor modules to hook and extend functionality
  */
-#ifdef __GENKSYMS__
+#if defined(__GENKSYMS__) || !IS_ENABLED(CONFIG_TYPEC_TCPCI)
 struct tcpci_data;
 #else
 /* struct tcpci_data */
@@ -66,10 +68,6 @@ DECLARE_HOOK(android_vh_typec_tcpm_log,
 	TP_PROTO(const char *log, bool *bypass),
 	TP_ARGS(log, bypass));
 
-DECLARE_HOOK(android_vh_typec_tcpm_modify_src_caps,
-	TP_PROTO(unsigned int *nr_src_pdo, u32 (*src_pdo)[PDO_MAX_OBJECTS], bool *modified),
-	TP_ARGS(nr_src_pdo, src_pdo, modified));
-
-#endif /* _TRACE_HOOK_TYPEC_H */
+#endif /* _TRACE_HOOK_UFSHCD_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>

@@ -7,9 +7,10 @@
 #if !defined(_TRACE_HOOK_BLOCK_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_BLOCK_H
 
+#include <linux/tracepoint.h>
 #include <trace/hooks/vendor_hooks.h>
 
-#ifdef __GENKSYMS__
+#if defined(__GENKSYMS__) || !defined(CONFIG_BLOCK)
 struct blk_mq_tags;
 struct blk_mq_alloc_data;
 struct blk_mq_tag_set;

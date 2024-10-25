@@ -5,6 +5,7 @@
 #define TRACE_INCLUDE_PATH trace/hooks
 #if !defined(_TRACE_HOOK_SIGNAL_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_HOOK_SIGNAL_H
+#include <linux/tracepoint.h>
 #include <trace/hooks/vendor_hooks.h>
 
 #ifdef __GENKSYMS__
@@ -19,6 +20,9 @@ DECLARE_HOOK(android_vh_do_send_sig_info,
 DECLARE_HOOK(android_vh_process_killed,
 	TP_PROTO(struct task_struct *task, bool *reap),
 	TP_ARGS(task, reap));
+DECLARE_HOOK(android_vh_killed_process,
+	TP_PROTO(struct task_struct *killer, struct task_struct *dst, bool *reap),
+	TP_ARGS(killer, dst, reap));
 #endif /* _TRACE_HOOK_SIGNAL_H */
 /* This part must be outside protection */
 #include <trace/define_trace.h>
