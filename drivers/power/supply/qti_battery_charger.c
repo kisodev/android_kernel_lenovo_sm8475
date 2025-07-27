@@ -123,6 +123,7 @@ enum usb_property_id {
 	USB_TYPEC_ORIENTC2,
 	USB_IN_DET,
 	USB_IN_DET2,
+	USB_INPUT_SUSPEND,
 	USB_PROP_MAX,
 };
 
@@ -1781,6 +1782,45 @@ static ssize_t usb_in_det2_show(struct class *c,
 }
 static CLASS_ATTR_RO(usb_in_det2);
 
+static ssize_t usb_input_suspend_store(struct class *c,
+					struct class_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	int rc;
+	bool val;
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_USB];
+
+	if (kstrtobool(buf, &val))
+		return -EINVAL;
+
+	rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_USB],
+				USB_INPUT_SUSPEND, val);
+	if (rc < 0)
+		return rc;
+
+	if (pst->psy)
+		power_supply_changed(pst->psy);
+	return count;
+}
+
+static ssize_t usb_input_suspend_show(struct class *c,
+					struct class_attribute *attr, char *buf)
+{
+	struct battery_chg_dev *bcdev = container_of(c, struct battery_chg_dev,
+						battery_class);
+	struct psy_state *pst = &bcdev->psy_list[PSY_TYPE_USB];
+	int rc;
+
+	rc = read_property_id(bcdev, pst, USB_INPUT_SUSPEND);
+	if (rc < 0)
+		return rc;
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pst->prop[USB_INPUT_SUSPEND]);
+}
+static CLASS_ATTR_RW(usb_input_suspend);
+
 static ssize_t cp_ibus_now_show(struct class *c,
 				struct class_attribute *attr, char *buf)
 {
@@ -2293,6 +2333,7 @@ static struct attribute *battery_class_attrs[] = {
 	&class_attr_usb_typec_orientationc2.attr,
 	&class_attr_usb_in_det.attr,
 	&class_attr_usb_in_det2.attr,
+	&class_attr_usb_input_suspend.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(battery_class);
@@ -2676,14 +2717,14 @@ static int battery_chg_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct battery_chg_dev *bcdev = platform_get_drvdata(pdev);
 	int rc;
-
 	printk("battery_chg_suspend start\n");
 	rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_BATTERY],
 				BATT_EXTFGREAD_ENABLE, 0);
+        cancel_delayed_work_sync(&bcdev->lenovo_battery_monitor_work);
 	if (rc < 0) {
 		return rc;
 	}
-	cancel_delayed_work_sync(&bcdev->lenovo_battery_monitor_work);
+
         return 0;
 }
 
@@ -2692,7 +2733,7 @@ static int battery_chg_resume(struct platform_device *pdev)
 	struct battery_chg_dev *bcdev = platform_get_drvdata(pdev);
 	int rc;
 
-	schedule_delayed_work(&bcdev->lenovo_battery_monitor_work, msecs_to_jiffies(0));
+        schedule_delayed_work(&bcdev->lenovo_battery_monitor_work, msecs_to_jiffies(0));
 	printk("battery_chg_resume start\n");
 	rc = write_property_id(bcdev, &bcdev->psy_list[PSY_TYPE_BATTERY],
 				BATT_EXTFGREAD_ENABLE, 1);

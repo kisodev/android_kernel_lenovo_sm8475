@@ -3259,7 +3259,7 @@ static ssize_t f0_save_show(struct device *dev,
 	struct aw_haptic *aw_haptic = container_of(cdev, struct aw_haptic,
 						   vib_dev);
 
-	len += snprintf(buf + len, PAGE_SIZE - len, "f0_cali_data = 0x%02X\n",
+	len += snprintf(buf + len, PAGE_SIZE - len, "0x%02X\n",
 			aw_haptic->f0_cali_data);
 
 	return len;
@@ -4253,7 +4253,7 @@ static void haptic_init(struct aw_haptic *aw_haptic)
 	aw_haptic->func->offset_cali(aw_haptic);
 	aw_haptic->ram_vbat_comp = AW_RAM_VBAT_COMP_ENABLE;
 	/* f0 calibration */
-	//f0_cali(aw_haptic);
+	f0_cali(aw_haptic);
 	mutex_unlock(&aw_haptic->lock);
 }
 

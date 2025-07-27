@@ -2980,6 +2980,9 @@ void dwc3_msm_notify_event(struct dwc3 *dwc,
 	u32 reg;
 	int i;
 
+	if (mdwc == NULL)
+		return;
+
 	switch (event) {
 	case DWC3_CONTROLLER_ERROR_EVENT:
 		dev_info(mdwc->dev,

@@ -369,6 +369,12 @@ config TARO
       This enable support for taro product. If you don't
       know what to do here, say N
 
+config ASPHALT_NEC
+    bool "asphalt_nec"
+    help
+      This enable support for asphalt row product. If you don't
+      know what to do here, say N
+
 config ASPHALT_ROW
     bool "asphalt_row"
     help

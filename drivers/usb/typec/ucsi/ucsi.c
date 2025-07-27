@@ -810,9 +810,10 @@ static void ucsi_handle_connector_change(struct work_struct *work)
 
 		if (con->status.flags & UCSI_CONSTAT_CONNECTED)
 			ucsi_register_partner(con);
+			printk("ucsi_register_partner+++++");
 		else
 			ucsi_unregister_partner(con);
-
+			printk("ucsi_unregister_partner+++++");
 		ucsi_port_psy_changed(con);
 
 		/* Only notify USB controller if partner supports USB data */
